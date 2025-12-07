@@ -1,52 +1,62 @@
 pipeline {
-  agent any
+    agent any
 
-  stages {
-    stage('Checkout') {
-      steps {
-        checkout scm
-      }
-    }
-
-    stage('Debug Workspace') {
-      steps {
-        sh 'echo "Workspace: $WORKSPACE"'
-        sh 'ls -la'
-      }
-    }
-
-    stage('Install Dependencies') {
-      steps {
-        script {
-          // ensure python3 exists
-          sh 'python3 --version || true'
-          if (fileExists('requirements.txt')) {
-            sh 'python3 -m pip install --user -r requirements.txt'
-          } else {
-            echo 'requirements.txt not found — installing pytest only'
-            sh 'python3 -m pip install --user pytest'
-          }
+    stages {
+        stage('Clean Workspace') {
+            steps {
+                deleteDir()
+                echo "Workspace cleared"
+            }
         }
-      }
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build') {
+            steps {
+                echo "Installing dependencies (if requirements.txt exists)"
+                sh 'python3 -m pip install --user -r requirements.txt || true'
+
+                echo "Building (compile python files to check syntax)..."
+                sh 'python3 -m compileall .'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                echo "Running tests (pytest)"
+                sh 'python3 -m pytest -q'
+            }
+        }
+
+        stage('Deploy (demo only)') {
+            steps {
+                echo "Simulating deployment for demo (no real cloud deploy)"
+                sh '''
+                  rm -rf deploy_preview || true
+                  mkdir -p deploy_preview
+                  cp -v app.py README.md requirements.txt deploy_preview/ || true
+                  cp -rv tests deploy_preview/ || true
+                  tar -czf deploy_preview.tar.gz deploy_preview
+                '''
+                archiveArtifacts artifacts: 'deploy_preview.tar.gz', fingerprint: true
+                echo "Deploy simulation ready — artifact archived as deploy_preview.tar.gz"
+            }
+        }
     }
 
-    stage('Run Tests') {
-      steps {
-        sh 'python3 -m pytest -q || true'
-      }
+    post {
+        success {
+            echo "Pipeline completed SUCCESSFULLY."
+        }
+        failure {
+            echo "Pipeline FAILED. Check console output for errors."
+        }
+        always {
+            echo "End of pipeline."
+        }
     }
-
-    stage('Run Application') {
-      steps {
-        sh 'python3 app.py'
-      }
-    }
-  }
-
-  post {
-    always {
-      echo "Cleaning workspace"
-      cleanWs()
-    }
-  }
 }
